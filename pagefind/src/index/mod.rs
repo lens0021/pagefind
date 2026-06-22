@@ -598,11 +598,16 @@ fn chunk_index(word_map: HashMap<String, PackedWord>, chunk_size: usize) -> Vec<
     let mut index_chunk = Vec::new();
     let mut index_chunk_size = 0;
     for word in words.into_iter() {
-        index_chunk_size += word
-            .pages
-            .iter()
-            .map(|p| p.locs.len() + p.meta_locs.len() + 1)
-            .sum::<usize>();
+        // Count the word string's bytes too, not just occurrences: a language
+        // with a huge tail of rare words (e.g. Korean) has tiny occurrence counts
+        // but a word list that dominates the bytes, so an occurrence-only metric
+        // never splits and the whole index collapses into one chunk.
+        index_chunk_size += word.word.len()
+            + word
+                .pages
+                .iter()
+                .map(|p| p.locs.len() + p.meta_locs.len() + 1)
+                .sum::<usize>();
         index_chunk.push(word);
         if index_chunk_size >= chunk_size {
             index_chunks.push(index_chunk.clone());

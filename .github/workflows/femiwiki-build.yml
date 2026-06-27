@@ -1,8 +1,8 @@
-name: Build femiwiki arm64 binary
+name: Build femiwiki binaries
 
-# One-off build of the extended Pagefind CLI for aarch64 Linux (musl), carrying
-# the Korean segmentation + chunk-sizing changes on this branch, for femiwiki to
-# consume. Not for upstream; mirrors the linux-arm64 recipe in release.yml.
+# One-off build of the extended Pagefind CLI carrying the Korean segmentation +
+# chunk-sizing changes on this branch, for femiwiki to consume and for local
+# end-to-end testing. Not for upstream; mirrors the linux recipe in release.yml.
 
 on:
   workflow_dispatch:
@@ -18,6 +18,12 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
     defaults:
       run:
         shell: bash
@@ -30,19 +36,24 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install aarch64 musl tooling
+      - name: Install MUSL tooling
         run: |
           sudo apt update -y
-          sudo apt install -y clang gcc-aarch64-linux-gnu musl-tools musl-dev
+          sudo apt install -y musl-tools musl-dev
+
+      - name: Install aarch64 musl tooling
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: |
+          sudo apt install -y clang gcc-aarch64-linux-gnu
           curl -sL https://github.com/cross-tools/musl-cross/releases/download/20250929/aarch64-unknown-linux-musl.tar.xz | sudo tar xJ -C /opt/
           echo "CC_aarch64_unknown_linux_musl=/opt/aarch64-unknown-linux-musl/bin/aarch64-unknown-linux-musl-gcc" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/opt/aarch64-unknown-linux-musl/bin/aarch64-unknown-linux-musl-gcc" >> "$GITHUB_ENV"
 
       - name: Install Rust toolchains
         run: |
-          rustup toolchain install nightly --component rust-src --target aarch64-unknown-linux-musl
+          rustup toolchain install nightly --component rust-src --target ${{ matrix.target }}
           rustup target add wasm32-unknown-unknown --toolchain nightly
-          rustup toolchain install stable --target aarch64-unknown-linux-musl
+          rustup toolchain install stable --target ${{ matrix.target }}
           rustup default stable
 
       - name: Install wasm-pack
@@ -74,18 +85,18 @@ jobs:
         working-directory: ./pagefind_playground
         run: npm i && npm run build
 
-      - name: Build extended aarch64 binary (ko segmentation + chunk sizing)
+      - name: Build extended binary (ko segmentation + chunk sizing)
         working-directory: ./pagefind
-        run: cargo build --release --target aarch64-unknown-linux-musl --features extended
+        run: cargo build --release --target ${{ matrix.target }} --features extended
 
       - name: Package
         run: |
-          tar czf pagefind-femiwiki-aarch64-unknown-linux-musl.tar.gz \
-            -C target/aarch64-unknown-linux-musl/release pagefind
-          sha256sum pagefind-femiwiki-aarch64-unknown-linux-musl.tar.gz
+          tar czf pagefind-femiwiki-${{ matrix.target }}.tar.gz \
+            -C target/${{ matrix.target }}/release pagefind
+          sha256sum pagefind-femiwiki-${{ matrix.target }}.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pagefind-femiwiki-aarch64-linux-musl
-          path: pagefind-femiwiki-aarch64-unknown-linux-musl.tar.gz
+          name: pagefind-femiwiki-${{ matrix.target }}
+          path: pagefind-femiwiki-${{ matrix.target }}.tar.gz
           if-no-files-found: error
